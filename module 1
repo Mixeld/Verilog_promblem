@@ -1,0 +1,39 @@
+module top_module (
+	input [2:0] SW,      // R
+	input [1:0] KEY,     // L and clk
+	output [2:0] LEDR);  // Q
+	
+    // Internal register to hold the state. This is the fix for the feedback loop.
+    wire [2:0] q_internal;
+    
+    // The output is now just a wire connected to the internal register.
+    assign LEDR = q_internal;
+
+    // The feedback logic reads from the internal state register, not the output port.
+    wire xor1;
+    assign xor1 = q_internal[1] ^ q_internal[2];
+    
+    // Instantiate the 3 muxed flip-flops.
+    // Note that the .Q port is now connected to the internal 'q_internal' wire.
+    mlx mod1 ( .L(KEY[1]), .clk(KEY[0]), .r(SW[0]), .q(q_internal[2]), .Q(q_internal[0]));
+    mlx mod2 ( .L(KEY[1]), .clk(KEY[0]), .r(SW[1]), .q(q_internal[0]), .Q(q_internal[1]));
+    mlx mod3 ( .L(KEY[1]), .clk(KEY[0]), .r(SW[2]), .q(xor1),            .Q(q_internal[2]));
+
+endmodule
+
+module mlx (
+    input L,      // Load signal
+    input clk,
+    input r,      // Data for loading
+    input q,      // Data for shifting
+    output reg Q  // Output must be 'reg'
+);
+
+    always @(posedge clk) begin
+        if (L) begin
+            Q <= r;  // Use non-blocking assignment
+        end else begin 
+            Q <= q;  // Use non-blocking assignment
+        end
+    end
+endmodule
