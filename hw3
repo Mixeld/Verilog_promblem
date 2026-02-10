@@ -86,6 +86,35 @@ module fdiv_k_vector #(
             end
         end
     end
+
+module top_system (
+    input clk_100mhz,
+    input reset_btn,
+    output [7:0] leds
+);
+    wire clk_1hz;
+    wire clk_slow;
+    
+    // Делитель 100 МГц → 1 Гц
+    fdiv_1hz div1 (
+        .clk_100mhz(clk_100mhz),
+        .rst(reset_btn),
+        .clk_1hz(clk_1hz)
+    );
+    
+    // Дополнительный делитель с k=8 
+    fdiv_k_vector #(.K(8)) div2 (
+        .clk_in(clk_1hz),
+        .rst(reset_btn),
+        .clk_out(clk_slow)
+    );
+    
+    // Индикация на светодиодах
+    assign leds[0] = clk_1hz;     // Мигает 1 раз в секунду
+    assign leds[1] = clk_slow;    // Мигает 1 раз в 8 секунд
+    assign leds[7:2] = 6'b101010; // Статический узор
+    
+endmodule
     
     
     assign counter_debug = counter;
