@@ -1,31 +1,3 @@
-module hw3_1(
-	input clk,
-	input rst,
-	output reg clkOut
-	);
-
-	parameter N = 26;
-
-	logic [N-1 : 0] count;
-	always_ff @(posedge clk or posedge rst) begin
-		if (rst) begin
-			// reset
-			count <= `0;
-			clkOut <= 1`b0;
-			
-		end
-		else 
-			begin
-			count <= count + 1;
-				if (count == (2 **N- 1)) begin
-					count <= `0;
-					clkOut <= ~clkOut;
-			end
-		end
-	end
-endmodule
-
-
 module fdiv_1hz (
 	input clk_100mhz,
 	input rst,
@@ -33,16 +5,16 @@ module fdiv_1hz (
 	);
 
 	parameter N = 26;
-	logic [N-1:0] counter;
+	reg [N-1:0] counter;
 
-	always_ff@(posedge clk_100mhz or posedge rst) begin
+	always @(posedge clk_100mhz or posedge rst) begin
 		if (rst) begin
-			counter <= '0;
-			clk_1hz <= '0;
+			counter <= 0;
+			clk_1hz <= 0;
 		end
 		else begin
 			if (counter == 50_000_000 - 1) begin
-				counter <= '0;
+				counter <= 0;
 				clk_1hz <= ~clk_1hz;
 			end
 			else begin
@@ -64,11 +36,8 @@ module fdiv_k_vector #(
     input wire [K_WIDTH-1:0] k_switches,
     
     // Выходной сигнал
-    output reg clk_out,
-    
-    // Дополнительные выходы для отладки (опционально)
-    output wire [COUNTER_WIDTH-1:0] counter_debug,
-    output wire divider_active
+    output reg clk_out
+
 );
     
     // Регистр для хранения текущего значения k
@@ -81,9 +50,9 @@ module fdiv_k_vector #(
     wire k_nonzero;
     
 
-    always_ff @(posedge clk or posedge rst) begin
+    always @(posedge clk or posedge rst) begin
         if (rst) begin
-            k_reg <= '0;  // По умолчанию 0
+            k_reg <= 0;  // По умолчанию 0
         end
         else begin
             k_reg <= k_switches;  // Запоминаем состояние свичей
@@ -91,24 +60,24 @@ module fdiv_k_vector #(
     end
     
     // Проверка, что k не равен 0
-    assign k_nonzero = (k_reg != '0);
+    assign k_nonzero = (k_reg != 0);
     
-    always_ff @(posedge clk or posedge rst) begin
+    always @(posedge clk or posedge rst) begin
         if (rst) begin
             // Сброс
-            counter <= '0;
-            clk_out <= '0;
+            counter <= 0;
+            clk_out <= 0;
         end
         else if (!k_nonzero) begin
             // Если k = 0, выключаем делитель
-            counter <= '0;
-            clk_out <= '0;
+            counter <= 0;
+            clk_out <= 0;
         end
         else begin
             // Основная логика
             if (counter == k_reg - 1) begin
                 // Достигли значения k-1
-                counter <= '0;
+                counter <= 0;
                 clk_out <= ~clk_out;  // Инвертируем выход
             end
             else begin
@@ -121,35 +90,5 @@ module fdiv_k_vector #(
     
     assign counter_debug = counter;
     assign divider_active = k_nonzero;
-    
-endmodule
-
-
-module top_system (
-    input clk_100mhz,
-    input reset_btn,
-    output [7:0] leds
-);
-    wire clk_1hz;
-    wire clk_slow;
-    
-    // Делитель 100 МГц → 1 Гц
-    fdiv_1hz div1 (
-        .clk_100mhz(clk_100mhz),
-        .rst(reset_btn),
-        .clk_1hz(clk_1hz)
-    );
-    
-    // Дополнительный делитель с k=8 
-    fdiv_k_vector #(.K(8)) div2 (
-        .clk_in(clk_1hz),
-        .rst(reset_btn),
-        .clk_out(clk_slow)
-    );
-    
-    // Индикация на светодиодах
-    assign leds[0] = clk_1hz;     // Мигает 1 раз в секунду
-    assign leds[1] = clk_slow;    // Мигает 1 раз в 8 секунд
-    assign leds[7:2] = 6'b101010; // Статический узор
     
 endmodule
