@@ -1,0 +1,206 @@
+module SimpleStopwatchNexys (
+    input clk_100MHz,      // Тактовая частота Nexys 4 DDR
+    input reset_btn,       // Кнопка сброса (BTNC)
+    input start_stop_btn,  // Кнопка старт/стоп (BTNR)
+    
+    // Выход на 7-сегментные индикаторы
+    output reg [6:0] seg,
+    output reg [7:0] an,
+    output reg dp
+);
+
+    // Параметры
+    localparam CLK_FREQ = 100_000_000;  // 100 МГц
+    localparam REFRESH_RATE = 1000;     // Частота обновления индикаторов (1 кГц)
+    localparam SNAKE_DURATION = 200;
+
+    // Регистры времени
+    reg [3:0] msec_10;      // Десятки миллисекунд (0-9)
+    reg [3:0] msec_1;       // Единицы миллисекунд (0-9)
+    reg [3:0] sec_10;       // Десятки секунд (0-5)
+    reg [3:0] sec_1;        // Единицы секунд (0-9)
+    reg [3:0] min_10;       // Десятки минут (0-9)
+    reg [3:0] min_1;        // Единицы минут (0-9)
+    reg [3:0] circle;       // Кружочек ожидания :)
+    
+    // Временные регистры для отображения
+    reg [3:0] display_digit;
+
+    // Состояния
+    reg running;            // 1 = работает, 0 = остановлен
+    reg [31:0] counter;     // Счётчик для генерации 10мс интервалов
+    reg prev_start_stop;    // Для детектирования фронта
+    
+    // Счётчик для мультиплексирования 7-сегментных индикаторов
+    reg [19:0] refresh_counter;
+    reg [2:0] digit_select;  // 3 бита достаточно для 0-6
+
+    // Логика секундомера
+    always @(posedge clk_100MHz or posedge reset_btn) begin
+        if (reset_btn) begin
+            // Сброс всех значений
+            msec_10 <= 0;
+            msec_1 <= 0;
+            sec_10 <= 0;
+            sec_1 <= 0;
+            min_10 <= 0;
+            min_1 <= 0;
+            running <= 0;
+            counter <= 0;
+            prev_start_stop <= 0;
+        end
+        else begin
+            // Детектирование фронта кнопки старт/стоп
+            prev_start_stop <= start_stop_btn;
+            
+            // Обработка кнопки старт/стоп
+            if (start_stop_btn && !prev_start_stop) begin
+                running <= ~running;
+            end
+            
+            // Логика счёта времени (10мс точность)
+            if (running) begin
+                if (counter == CLK_FREQ / 100 - 1) begin  // 10мс интервал
+                    counter <= 0;
+                    
+                    // Инкремент миллисекунд
+                    if (msec_1 == 4'd9) begin
+                        msec_1 <= 4'd0;
+                        if (msec_10 == 4'd9) begin
+                            msec_10 <= 4'd0;
+                            
+                            // Инкремент секунд
+                            if (sec_1 == 4'd9) begin
+                                sec_1 <= 4'd0;
+                                if (sec_10 == 4'd5) begin
+                                    sec_10 <= 4'd0;
+                                    
+                                    // Инкремент минут
+                                    if (min_1 == 4'd9) begin
+                                        min_1 <= 4'd0;
+                                        if (min_10 == 4'd9) begin
+                                            min_10 <= 4'd0; // Сбрасываем при достижении 99:59:99
+                                        end
+                                        else begin
+                                            min_10 <= min_10 + 4'd1;
+                                        end
+                                    end
+                                    else begin
+                                        min_1 <= min_1 + 4'd1;
+                                    end
+                                end
+                                else begin
+                                    sec_10 <= sec_10 + 4'd1;
+                                end
+                            end
+                            else begin
+                                sec_1 <= sec_1 + 4'd1;
+                            end
+                        end
+                        else begin
+                            msec_10 <= msec_10 + 4'd1;
+                        end
+                    end
+                    else begin
+                        msec_1 <= msec_1 + 4'd1;
+                    end          
+                end
+                else begin
+                    counter <= counter + 1;
+                end
+            end
+        end
+    end
+
+    // Мультиплексирование 7-сегментных индикаторов
+    always @(posedge clk_100MHz) begin
+        if (reset_btn) begin
+            refresh_counter <= 0;
+            digit_select <= 0;
+            an <= 8'b11111111;
+            seg <= 7'b1111111;
+            dp <= 1;
+            display_digit <= 4'd0;
+        end
+        else begin
+            // Обновление индикаторов с частотой ~1 кГц
+            if (refresh_counter == CLK_FREQ / (8 * REFRESH_RATE) - 1) begin
+                refresh_counter <= 0;
+                
+                // Выключаем все аноды
+                an <= 8'b11111111;
+                
+                // Выбираем следующую цифру
+                digit_select <= digit_select + 1;
+                if (digit_select == 3'd6) digit_select <= 0;
+                else begin
+                    case (digit_select)
+                        3'd0: begin // Десятки минут
+                            an <= 8'b11111110;
+                            display_digit <= min_10;
+                            dp <= 1;
+                        end
+                        3'd1: begin // Единицы минут
+                            an <= 8'b11111101;
+                            display_digit <= min_1;
+                            dp <= 0;  // Точка между минутами и секундами
+                        end
+                        3'd2: begin // Десятки секунд
+                            an <= 8'b11111011;
+                            display_digit <= sec_10;
+                            dp <= 1;
+                        end
+                        3'd3: begin // Единицы секунд
+                            an <= 8'b11110111;
+                            display_digit <= sec_1;
+                            dp <= 0;  // Точка между секундами и миллисекундами
+                        end
+                        3'd4: begin // Десятки миллисекунд
+                            an <= 8'b11101111;
+                            display_digit <= msec_10;
+                            dp <= 1;
+                        end
+                        3'd5: begin // Единицы миллисекунд
+                            an <= 8'b11011111;
+                            display_digit <= msec_1;
+                            dp <= 1;
+                        end
+                        3'd6: begin // кружочек для приколов (7-й индикатор)
+                            an <= 8'b10111111;
+                            display_digit <= circle;
+                            dp <= 1;
+                        end
+                        default: begin
+                            an <= 8'b11111111;
+                            display_digit <= 4'd0;
+                            dp <= 1;
+                        end
+                    endcase
+                    
+                    // Преобразование цифры в 7-сегментный код
+                    case (display_digit)
+                        4'd0: seg <= 7'b0000001; // 0
+                        4'd1: seg <= 7'b1001111; // 1
+                        4'd2: seg <= 7'b0010010; // 2
+                        4'd3: seg <= 7'b0000110; // 3
+                        4'd4: seg <= 7'b1001100; // 4
+                        4'd5: seg <= 7'b0100100; // 5
+                        4'd6: seg <= 7'b0100000; // 6
+                        4'd7: seg <= 7'b0001111; // 7
+                        4'd8: seg <= 7'b0000000; // 8
+                        4'd9: seg <= 7'b0000100; // 9
+                        4'd11: seg <= 7'b0001001; // Специальный символ для кружочка (буква "o")
+                        default: seg <= 7'b1111111; // Пусто
+                    endcase
+                end
+            end
+            else begin
+                refresh_counter <= refresh_counter + 1;
+            end
+        end
+    end
+
+endmodule
+
+
+
