@@ -34,7 +34,7 @@ module d_flip_flop(
     output logic Q_n
 );
 
-always_ff @(posedge clk, jr negedge rst_n) begin
+always_ff @(posedge clk or negedge rst_n) begin
     if(!rst_n) begin
         Q <= 1'b0;
         Q_n <= 1'b1;
