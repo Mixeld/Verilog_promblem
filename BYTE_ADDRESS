@@ -1,0 +1,48 @@
+
+module register_file_rw_mode #(
+    parameter int REG_NUM = 8,
+    parameter int DATA_WIDTH = 32,
+    parameter WR_REG_WIDTH = 3, 
+    parameter int ADDR_WIDTH = $clog2(NUM_REGS)
+    parameter int RW_MODE= 1
+) (
+    input  logic                     clk,
+    input  logic                     rst_n,
+
+    // Режим работы: 0 - чтение, 1 - запись   
+    input  logic [ADDR_WIDTH-1:0]    addr,       
+    input  logic [DATA_WIDTH-1:0]    data_in,    
+    output logic [DATA_WIDTH-1:0]    data_out    
+);
+
+    localparam RW_REG_NUM = WR_REG_WIDTH;
+    localparam RO_REG_NUM = REG_NUM - RW_REG_NUM;
+
+    localparam [DATA_WIDTH - 1:0] rw_regs [0 : RW_REG_NUM - 1];
+    localparam [DATA_WIDTH - 1:0] ro_regs [0 : RO_REG_NUM - 1];
+
+    always_ff @(posedge clk or negedge rst_n) begin
+        if(!rst_n) begin
+            for (integer  i = 0; i < NUM_REGS; i++) begin 
+                regs[i] <= '0;
+            end
+        end
+        else if (RW_MODE == 1) begin
+            regs[addr] <= data_in;
+        end
+    end
+
+    always_comb begin
+        if (addr < RW_REG_NUM) begin
+            data_out = rw_regs[addr];
+        end else if (addr < REG_NUM) begin
+            data_out = ro_regs[addr - RW_REG_NUM];
+        end else begin
+            data_out = '0;
+        end
+    end
+
+endmodule
+
+
+
